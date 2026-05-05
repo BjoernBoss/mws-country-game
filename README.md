@@ -4,26 +4,49 @@
 
 This repository is designed to be used with the [`MWS-Base`](https://github.com/BjoernBoss/mws-base.git).
 
-The game provided here was designed as an internal joke game. It consists of various questions, which need to map values to the countries 'Germany', 'Denmark', 'Hungary', and 'Cambodia'.
+The game provided here was designed as a joke game. It consists of various questions, which need to map values to the countries 'Germany', 'Denmark', 'Hungary', and 'Cambodia', and is played in german.
 It provides an interactive way to play this game together with a large player base, and one administrator, who controls the game progress.
 It allows this by making use of `WebSockets`.
 
 All active sessions are managed by the created `CountryGame` object. Sharing this object across multiple listened ports will therefore ensure each port shares a common player base.
 
-### Endpoints:
+Note: The `dk-flag-feature.svg` and `kh-flag-feature.svg` assets originate from `Wikipedia`.
 
-- The players can just connect via the root `/` or `/client/main.html`.
-- Scoreboards can be connected via `/score` or `/score/main.html`.
-- The admin page can be connected via `/admin/main.html`.
+## Setup
+Clone into the modules directory of an existing MWS-Base installation:
 
-## Using the Module
-To use this module, setup the `mws-base`. Then simply clone this repository into the modules directory:
+    $ git clone https://github.com/BjoernBoss/mws-country-game.git modules/country-game
 
-	$ git clone https://github.com/BjoernBoss/mws-country-game.git modules/country-game
-
-Afterwards, transpile the entire server application, and construct this module in the `setup.js Run` method as:
+Register the module in `modules/setup.js`:
 
 ```JavaScript
-const m = await import("./country-game/country-game.js");
-server.listenHttp(93, new m.CountryGame(), null);
+import * as libInterface from "core/interface.js";
+
+export async function Run(server) {
+    try {
+        const countryGame = await import("country-game/country-game.js");
+        const dispatch = new libInterface.DispatchModule({
+            '/country-game': new countryGame.CountryGame(),
+        });
+        server.listenHttp(8080, dispatch, (host) => host == 'localhost');
+    } catch (e) {
+        throw new Error(`Failed to load module: ${e.message}`);
+    }
+}
 ```
+
+Then just build and run the server as usual.
+
+### Endpoints:
+| Method | Path | Description |
+|---|---|---|
+| GET | `/` | Primary access for normal players |
+| GET | `/score` | Endpoint for scoreboards |
+| GET | `/admin` | Endpoint for admin |
+| WebSocket | `/ws-{admin\|client\|score}` | Join a game session and be notified about its state |
+
+## Game Rules
+- There can only be one administrator
+- Player names are unique and identify one player
+- There can be multiple scoreboards
+- The administrator advances the game progress and selects the next questions

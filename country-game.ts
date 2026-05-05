@@ -1,8 +1,13 @@
 /* SPDX-License-Identifier: BSD-3-Clause */
-/* Copyright (c) 2024-2025 Bjoern Boss Henrichsen */
-import * as libCommon from "core/common.js";
+/* Copyright (c) 2024-2026 Bjoern Boss Henrichsen */
+import * as libInterface from "core/interface.js";
 import * as libClient from "core/client.js";
+import * as libRequest from "core/request.js";
 import * as libLocation from "core/location.js";
+import * as libBuilder from "core/builder.js";
+import * as libCache from "core/cache.js";
+
+const MODULE_NAME = 'country-game';
 
 enum GamePhase {
 	start = 'start',
@@ -297,16 +302,20 @@ class GameState {
 	}
 };
 
-export class CountryGame implements libCommon.ModuleInterface {
+export class CountryGame implements libInterface.ModuleInterface {
 	private fileStatic: (path: string) => string;
 	private game: GameState;
+	private connected: Set<libClient.ClientSocket>;
 
-	public name: string = 'country-game';
+	public name: string = MODULE_NAME;
 	constructor() {
 		this.fileStatic = libLocation.MakeSelfPath(import.meta.url, '/static');
 		this.game = new GameState();
+		this.connected = new Set<libClient.ClientSocket>();
 	}
-	private acceptWebSocket(client: libClient.ClientSocket, type: ConnectionType): void {
+	private async acceptWebSocket(client: libClient.ClientSocket, type: ConnectionType): Promise<void> {
+		this.connected.add(client);
+
 		/* configure the client (scores dont need to log in) */
 		client.pushLog(type);
 		client.log('websocket accepted');
@@ -314,19 +323,18 @@ export class CountryGame implements libCommon.ModuleInterface {
 			this.game.addScore(client);
 
 		/* register the callbacks */
-		let that = this;
-		client.ondata = function (data) {
+		client.ondata = (data) => {
 			try {
 				let parsed = JSON.parse(data.toString('utf-8'));
 
 				/* handle the response based on the web-socket kind */
 				let response;
 				if (type == ConnectionType.admin)
-					response = that.handleAdminMessage(client, parsed);
+					response = this.handleAdminMessage(client, parsed);
 				else if (type == ConnectionType.player)
-					response = that.handlePlayerMessage(client, parsed);
+					response = this.handlePlayerMessage(client, parsed);
 				else if (type == ConnectionType.score)
-					response = that.handleScoreMessage(parsed);
+					response = this.handleScoreMessage(parsed);
 				else
 					throw new Error(`Unknown kind [${type}] encountered`);
 
@@ -336,13 +344,14 @@ export class CountryGame implements libCommon.ModuleInterface {
 				else
 					client.log(`response: ${response.code}`);
 				client.send(JSON.stringify(response));
-			} catch (err) {
+			} catch (err: any) {
 				client.error(`exception while handling ${type}: [${err}]`);
 				client.close();
 			}
 		};
-		client.onclose = function () {
-			that.game.disconnect(client, type);
+		client.onclose = () => {
+			this.game.disconnect(client, type);
+			this.connected.delete(client);
 			client.log(`websocket closed`);
 		};
 	}
@@ -410,45 +419,134 @@ export class CountryGame implements libCommon.ModuleInterface {
 				return { code: 'malformed' };
 		}
 	}
+	private async fetchBody(client: libClient.HttpRequest, path: string): Promise<string | null> {
+		const fullPath = this.fileStatic(path);
 
-	public request(client: libClient.HttpRequest): void {
-		client.log(`Game handler for [${client.path}]`);
-		if (client.ensureMethod(['GET']) == null)
-			return;
-
-		/* check if its a root-request and forward it accordingly */
-		if (client.path == '/') {
-			client.tryRespondFile(this.fileStatic('client/main.html'));
-			return;
-		}
-		if (client.path == '/score') {
-			client.tryRespondFile(this.fileStatic('score/main.html'));
-			return;
+		const cached: libCache.Cached | null = libCache.GetActual(fullPath, true);
+		if (cached == null) {
+			client.error(`Failed to find content [${fullPath}]`);
+			client.respondFileSystemError();
+			return null;
 		}
 
-		/* respond to the request by trying to server the file */
-		client.tryRespondFile(this.fileStatic(client.path));
+		try {
+			return (await cached.readAsync()).toString('utf-8');
+		}
+		catch (err: any) {
+			client.error(`Failed to read content [${fullPath}]: ${err.message}`);
+			client.respondFileSystemError();
+			return null;
+		}
 	}
-	public upgrade(client: libClient.HttpUpgrade): void {
-		client.log(`Game handler for [${client.path}]`);
+	private async buildClientPage(client: libClient.HttpRequest): Promise<void> {
+		const toPath = (path: string) => libCache.MakeImmutable(client.makePath(path), true);
+		const b = libBuilder;
 
-		/* check if its a web-socket request */
+		const body: string | null = await this.fetchBody(client, '/client/main.html');
+		if (body == null)
+			return;
+
+		const page = new b.HtmlPage({
+			language: 'de',
+			head: [
+				b.Meta('viewport', 'width=device-width, initial-scale=1'),
+				b.Title('Normaler Mitspieler!'),
+				b.LoadStyle(toPath('/client/style.css')),
+				b.LoadScript(toPath('/client/script.js')),
+			],
+			body: [
+				b.AddScript(`window.CSS_URL_DK = '${toPath('/dk-flag-feature.svg')}';`),
+				b.AddScript(`window.CSS_URL_KH = '${toPath('/kh-flag-feature.svg')}';`),
+				b.Embed(body, true)
+			]
+		});
+		client.respondHtml(page, { status: libRequest.Status.Ok });
+	}
+	private async buildAdminPage(client: libClient.HttpRequest): Promise<void> {
+		const toPath = (path: string) => libCache.MakeImmutable(client.makePath(path), true);
+		const b = libBuilder;
+
+		const body: string | null = await this.fetchBody(client, '/admin/main.html');
+		if (body == null)
+			return;
+
+		const page = new b.HtmlPage({
+			language: 'de',
+			head: [
+				b.Meta('viewport', 'width=device-width, initial-scale=1'),
+				b.Title('Spiel Kontrolle!'),
+				b.LoadStyle(toPath('/admin/style.css')),
+				b.LoadScript(toPath('/admin/script.js'))
+			],
+			body: b.Embed(body, true)
+		});
+		client.respondHtml(page, { status: libRequest.Status.Ok });
+	}
+	private async buildScorePage(client: libClient.HttpRequest): Promise<void> {
+		const toPath = (path: string) => libCache.MakeImmutable(client.makePath(path), true);
+		const b = libBuilder;
+
+		const body: string | null = await this.fetchBody(client, '/score/main.html');
+		if (body == null)
+			return;
+
+		const page = new b.HtmlPage({
+			language: 'de',
+			head: [
+				b.Meta('viewport', 'width=device-width, initial-scale=1'),
+				b.Title('Punktestand'),
+				b.LoadStyle(toPath('/score/style.css')),
+				b.LoadScript(toPath('/score/script.js'))
+			],
+			body: b.Embed(body, true)
+		});
+		client.respondHtml(page, { status: libRequest.Status.Ok });
+	}
+
+	public async request(client: libClient.HttpRequest): Promise<void> {
+		client.trace(`Game handler for [${client.path}]`);
+		if (client.checkMethod('GET') == null)
+			return;
+
+		/* check if its one of the html endpoints and build them dynamically and discard any remaining html requests */
+		if (client.path == '/')
+			return this.buildClientPage(client);
+		if (client.path == '/admin')
+			return this.buildAdminPage(client);
+		if (client.path == '/score')
+			return this.buildScorePage(client);
+		if (client.path.toLowerCase().endsWith('.html'))
+			return;
+
+		/* respond to the request by trying to serve the file (all files are considered stable) */
+		await client.tryRespondFile(this.fileStatic(client.path), true);
+	}
+	public async upgrade(client: libClient.HttpUpgrade): Promise<void> {
+		client.trace(`Game handler for [${client.path}]`);
+
+		/* check if its a web-socket request (fail all bad requests to the known endpoints) */
 		if (client.path == '/ws-client') {
 			if (client.tryAcceptWebSocket((ws) => this.acceptWebSocket(ws, ConnectionType.player)))
 				return;
 			client.log(`Invalid request for client web-socket point`);
+			client.respondBadRequest('Endpoint is designed for web-sockets');
 		}
 		else if (client.path == '/ws-admin') {
 			if (client.tryAcceptWebSocket((ws) => this.acceptWebSocket(ws, ConnectionType.admin)))
 				return;
 			client.log(`Invalid request for admin web-socket point`);
+			client.respondBadRequest('Endpoint is designed for web-sockets');
 		}
 		else if (client.path == '/ws-score') {
 			if (client.tryAcceptWebSocket((ws) => this.acceptWebSocket(ws, ConnectionType.score)))
 				return;
 			client.log(`Invalid request for score web-socket point`);
+			client.respondBadRequest('Endpoint is designed for web-sockets');
 		}
-		client.respondNotFound();
-		return;
 	}
-};
+	public async stop(): Promise<void> {
+		/* safe to iterate, even it it may be removed in the close call */
+		for (const client of this.connected)
+			client.close();
+	}
+}

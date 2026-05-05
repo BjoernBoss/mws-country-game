@@ -1,8 +1,12 @@
 /* SPDX-License-Identifier: BSD-3-Clause */
-/* Copyright (c) 2024-2025 Bjoern Boss Henrichsen */
+/* Copyright (c) 2024-2026 Bjoern Boss Henrichsen */
 let _game = {};
 
 window.onload = function () {
+	/* patch the css accordingly to contain the dynamic image paths */
+	document.querySelector('.dk').style.setProperty('--image-path', `url('${window.CSS_URL_DK}')`);
+	document.querySelector('.kh').style.setProperty('--image-path', `url('${window.CSS_URL_KH}')`);
+
 	/* fetch all relevant components */
 	_game.htmlSelectOverlay = document.getElementById('select');
 	_game.htmlOptions = [
@@ -39,11 +43,12 @@ window.onload = function () {
 	_game.name = '';
 
 	/* setup the web-socket */
-	let url = new URL(document.URL);
-	let protocol = (url.protocol.startsWith('https') ? 'wss' : 'ws');
+	let pathName = location.pathname;
+	if (!pathName.endsWith('/'))
+		pathName += '/';
 	_game.sock = {
 		ws: null,
-		url: `${protocol}://${url.host}/wedding-game/ws-client`,
+		url: new URL('./ws-client', `${location.protocol == 'https:' ? 'wss' : 'ws'}://${location.host}${pathName}`).href,
 		queue: [],
 		handling: false,
 		state: 'creating',
@@ -51,10 +56,10 @@ window.onload = function () {
 	};
 	_game.setupConnection();
 };
-window.onbeforeunload = function() { return "Your work will be lost."; };
+window.onbeforeunload = function () { return "Your work will be lost."; };
 
 _game.connectionFailed = function () {
-	if (_game.sock.connectionFailedDelay > 8192) {
+	if (_game.sock.connectionFailedDelay > 512) {
 		console.log('Not trying a new connection');
 		_game.sock.state = 'failed';
 	}
@@ -117,7 +122,7 @@ _game.setupConnection = function () {
 	};
 	_game.sock.ws.onerror = function () {
 		console.log('Failed to establish a connection to the server');
-		_game.sock.ws.onclose = function() {};
+		_game.sock.ws.onclose = function () { };
 		_game.connectionFailed();
 	};
 };
