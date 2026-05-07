@@ -88,16 +88,6 @@ window.onload = function () {
 			desc: 'Zigarettenverbrauch pro Kopf pro Jahr',
 			text: ['726', '1298', '1600', '2060'],
 			valid: ['kh', 'dk', 'de', 'hu']
-		},
-		{
-			desc: 'Zigarettenverbrauch pro Kopf pro Jahr',
-			text: ['726', '1298', '1600', '2060'],
-			valid: ['kh', 'dk', 'de', 'hu']
-		},
-		{
-			desc: 'Hymne auf Spanisch',
-			text: ['1. Hymne', '2. Hymne', '3. Hymne', '4. Hymne'],
-			valid: ['dk', 'kh', 'hu', 'de']
 		}
 	];
 

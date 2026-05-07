@@ -2,10 +2,12 @@
 /* Copyright (c) 2024-2026 Bjoern Boss Henrichsen */
 let _game = {};
 
+const GAME_NAME_REGEX = /^[a-zA-Z0-9-_]( ?[a-zA-Z0-9-_])*$/
+
 window.onload = function () {
 	/* patch the css accordingly to contain the dynamic image paths */
-	document.querySelector('.dk').style.setProperty('--image-path', `url('${window.CSS_URL_DK}')`);
-	document.querySelector('.kh').style.setProperty('--image-path', `url('${window.CSS_URL_KH}')`);
+	document.getElementById('root').style.setProperty('--dk-image-path', `url('${window.__CSS_URL_DK}')`);
+	document.getElementById('root').style.setProperty('--kh-image-path', `url('${window.__CSS_URL_KH}')`);
 
 	/* fetch all relevant components */
 	_game.htmlSelectOverlay = document.getElementById('select');
@@ -220,13 +222,14 @@ _game.login = function (takeOwnership, reset) {
 	}
 
 	/* validate the name */
-	else if (_game.htmlName.value == '') {
-		_game.htmlWarning.classList.remove('hidden');
-		_game.htmlWarningText.innerText = 'Bitte gib einen Namen ein';
-		return;
+	else {
+		name = _game.htmlName.value.trim();
+		if (!name.match(GAME_NAME_REGEX)) {
+			_game.htmlWarning.classList.remove('hidden');
+			_game.htmlWarningText.innerText = 'Bitte gib einen zulässigen Namen ein';
+			return;
+		}
 	}
-	else
-		name = _game.htmlName.value;
 
 	/* check if the state is ready */
 	if (_game.sock.state != 'ready') {

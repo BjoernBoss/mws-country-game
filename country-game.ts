@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-3-Clause */
 /* Copyright (c) 2024-2026 Bjoern Boss Henrichsen */
-import * as libInterface from "core/interface.js";
+import * as libHandler from "core/handler.js";
 import * as libClient from "core/client.js";
 import * as libRequest from "core/request.js";
 import * as libLocation from "core/location.js";
@@ -8,6 +8,7 @@ import * as libBuilder from "core/builder.js";
 import * as libCache from "core/cache.js";
 
 const MODULE_NAME = 'country-game';
+const VALID_NAME_REGEX = /^[a-zA-Z0-9-_]( ?[a-zA-Z0-9-_])*$/
 
 enum GamePhase {
 	start = 'start',
@@ -77,6 +78,10 @@ class GameState {
 
 	public addPlayer(client: libClient.ClientSocket, name: string, reset: boolean, takeOwnership: boolean): { code: string } {
 		const added: boolean = !(name in this.players);
+
+		/* check if the player is already logged in */
+		if (this.connected.has(client))
+			return { code: 'alreadyLoggedIn' };
 
 		/* check if the current owner should be logged off */
 		if (!added) {
@@ -168,7 +173,7 @@ class GameState {
 			return { code: 'outOfRange' };
 		if (value == this.players[name].choices[index])
 			return { code: 'ok' };
-		client.log(`made choice [${value}] for [${index}]`);
+		client.trace(`made choice [${value}] for [${index}]`);
 
 		/* update the choice of the player and notify him */
 		this.players[name].choices[index] = value;
@@ -231,7 +236,7 @@ class GameState {
 		if (this.phase != GamePhase.start && this.phase != GamePhase.resolved)
 			return { code: 'seqError' };
 		this.phase = GamePhase.prepared;
-		client.log('setup next game');
+		client.trace('setup next game');
 
 		/* reset the choices */
 		for (const name in this.players)
@@ -254,7 +259,7 @@ class GameState {
 		if (this.phase != GamePhase.prepared)
 			return { code: 'seqError' };
 		this.phase = GamePhase.open;
-		client.log('started next game');
+		client.trace('started next game');
 
 		/* update the state and notify the listener */
 		this.allStatesChanged();
@@ -268,7 +273,7 @@ class GameState {
 		if (this.phase != GamePhase.open)
 			return { code: 'seqError' };
 		this.phase = GamePhase.closed;
-		client.log('closed game');
+		client.trace('closed game');
 
 		/* update the state and notify the listener */
 		this.allStatesChanged();
@@ -284,7 +289,7 @@ class GameState {
 		if (result.length != 4)
 			return { code: 'malformed' };
 		this.phase = GamePhase.resolved;
-		client.log('resolved game');
+		client.trace('resolved game');
 
 		/* update the player scores */
 		this.correct = result;
@@ -302,13 +307,14 @@ class GameState {
 	}
 };
 
-export class CountryGame implements libInterface.ModuleInterface {
+export class CountryGame extends libHandler.ModuleHandler {
 	private fileStatic: (path: string) => string;
 	private game: GameState;
 	private connected: Set<libClient.ClientSocket>;
 
-	public name: string = MODULE_NAME;
 	constructor() {
+		super(MODULE_NAME);
+
 		this.fileStatic = libLocation.MakeSelfPath(import.meta.url, '/static');
 		this.game = new GameState();
 		this.connected = new Set<libClient.ClientSocket>();
@@ -317,7 +323,7 @@ export class CountryGame implements libInterface.ModuleInterface {
 		this.connected.add(client);
 
 		/* configure the client (scores dont need to log in) */
-		client.pushLog(type);
+		client.tagLog(type);
 		client.log('websocket accepted');
 		if (type == ConnectionType.score)
 			this.game.addScore(client);
@@ -340,9 +346,9 @@ export class CountryGame implements libInterface.ModuleInterface {
 
 				/* write the result out */
 				if (typeof (parsed.cmd) == 'string')
-					client.log(`handling command [${parsed.cmd}]: ${response.code}`);
+					client.trace(`handling command [${parsed.cmd}]: ${response.code}`);
 				else
-					client.log(`response: ${response.code}`);
+					client.trace(`response: ${response.code}`);
 				client.send(JSON.stringify(response));
 			} catch (err: any) {
 				client.error(`exception while handling ${type}: [${err}]`);
@@ -360,10 +366,13 @@ export class CountryGame implements libInterface.ModuleInterface {
 			return { code: 'malformed' };
 
 		/* handle the command */
+		let loggedIn = false
 		switch (msg.cmd) {
 			case 'login':
-				if (typeof (msg.name) != 'string' || msg.name == '')
+				if (typeof (msg.name) != 'string' || msg.name == '' || !msg.name.match(VALID_NAME_REGEX))
 					return { code: 'malformed' };
+				if (!loggedIn)
+					client.tagLog(msg.name), loggedIn = true;
 				return this.game.addPlayer(client, msg.name, msg.resetState === true, msg.takeOwnership === true);
 			case 'state':
 				return this.game.getPlayerState(client);
@@ -439,7 +448,7 @@ export class CountryGame implements libInterface.ModuleInterface {
 		}
 	}
 	private async buildClientPage(client: libClient.HttpRequest): Promise<void> {
-		const toPath = (path: string) => libCache.MakeImmutable(client.makePath(path), true);
+		const toPath = (path: string) => libCache.MakeImmutable(this.moduleName, client.makePath(path), true);
 		const b = libBuilder;
 
 		const body: string | null = await this.fetchBody(client, '/client/main.html');
@@ -455,15 +464,15 @@ export class CountryGame implements libInterface.ModuleInterface {
 				b.LoadScript(toPath('/client/script.js')),
 			],
 			body: [
-				b.AddScript(`window.CSS_URL_DK = '${toPath('/dk-flag-feature.svg')}';`),
-				b.AddScript(`window.CSS_URL_KH = '${toPath('/kh-flag-feature.svg')}';`),
+				b.AddScript(`window.__CSS_URL_DK = '${toPath('/dk-flag-feature.svg')}';`),
+				b.AddScript(`window.__CSS_URL_KH = '${toPath('/kh-flag-feature.svg')}';`),
 				b.Embed(body, true)
 			]
 		});
 		client.respondHtml(page, { status: libRequest.Status.Ok });
 	}
 	private async buildAdminPage(client: libClient.HttpRequest): Promise<void> {
-		const toPath = (path: string) => libCache.MakeImmutable(client.makePath(path), true);
+		const toPath = (path: string) => libCache.MakeImmutable(this.moduleName, client.makePath(path), true);
 		const b = libBuilder;
 
 		const body: string | null = await this.fetchBody(client, '/admin/main.html');
@@ -483,7 +492,7 @@ export class CountryGame implements libInterface.ModuleInterface {
 		client.respondHtml(page, { status: libRequest.Status.Ok });
 	}
 	private async buildScorePage(client: libClient.HttpRequest): Promise<void> {
-		const toPath = (path: string) => libCache.MakeImmutable(client.makePath(path), true);
+		const toPath = (path: string) => libCache.MakeImmutable(this.moduleName, client.makePath(path), true);
 		const b = libBuilder;
 
 		const body: string | null = await this.fetchBody(client, '/score/main.html');
@@ -503,7 +512,7 @@ export class CountryGame implements libInterface.ModuleInterface {
 		client.respondHtml(page, { status: libRequest.Status.Ok });
 	}
 
-	public async request(client: libClient.HttpRequest): Promise<void> {
+	protected override async handleRequest(client: libClient.HttpRequest): Promise<void> {
 		client.trace(`Game handler for [${client.path}]`);
 		if (client.checkMethod('GET') == null)
 			return;
@@ -521,32 +530,33 @@ export class CountryGame implements libInterface.ModuleInterface {
 		/* respond to the request by trying to serve the file (all files are considered stable) */
 		await client.tryRespondFile(this.fileStatic(client.path), true);
 	}
-	public async upgrade(client: libClient.HttpUpgrade): Promise<void> {
+	protected override async handleUpgrade(client: libClient.HttpUpgrade): Promise<void> {
 		client.trace(`Game handler for [${client.path}]`);
 
-		/* check if its a web-socket request (fail all bad requests to the known endpoints) */
+		/* check if its a web-socket request (await acceptance to ensure the stop
+		*	method is not entered before the full accept has been performed) */
 		if (client.path == '/ws-client') {
-			if (client.tryAcceptWebSocket((ws) => this.acceptWebSocket(ws, ConnectionType.player)))
-				return;
-			client.log(`Invalid request for client web-socket point`);
-			client.respondBadRequest('Endpoint is designed for web-sockets');
+			const ws = await client.acceptWebSocket();
+			if (ws != null)
+				await this.acceptWebSocket(ws, ConnectionType.player);
 		}
 		else if (client.path == '/ws-admin') {
-			if (client.tryAcceptWebSocket((ws) => this.acceptWebSocket(ws, ConnectionType.admin)))
-				return;
-			client.log(`Invalid request for admin web-socket point`);
-			client.respondBadRequest('Endpoint is designed for web-sockets');
+			const ws = await client.acceptWebSocket();
+			if (ws != null)
+				await this.acceptWebSocket(ws, ConnectionType.admin);
 		}
 		else if (client.path == '/ws-score') {
-			if (client.tryAcceptWebSocket((ws) => this.acceptWebSocket(ws, ConnectionType.score)))
-				return;
-			client.log(`Invalid request for score web-socket point`);
-			client.respondBadRequest('Endpoint is designed for web-sockets');
+			const ws = await client.acceptWebSocket();
+			if (ws != null)
+				await this.acceptWebSocket(ws, ConnectionType.score);
 		}
 	}
-	public async stop(): Promise<void> {
+	protected override async handleStop(): Promise<void> {
+		const promises: Promise<void>[] = [];
+
 		/* safe to iterate, even it it may be removed in the close call */
 		for (const client of this.connected)
-			client.close();
+			promises.push(client.close());
+		await Promise.all(promises);
 	}
 }
