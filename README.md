@@ -43,6 +43,7 @@ Then just build and run the server as usual.
 | GET | `/` | Primary access for normal players |
 | GET | `/score` | Endpoint for scoreboards |
 | GET | `/admin` | Endpoint for admin |
+| GET | `/**/*.css`, `/**/*.js`, `/**/*.svg` | Static assets |
 | WebSocket | `/ws-{admin\|client\|score}` | Join a game session and be notified about its state |
 
 ## Game Rules

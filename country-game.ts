@@ -86,7 +86,7 @@ class GameState {
 		/* check if the current owner should be logged off */
 		if (!added) {
 			if (!takeOwnership)
-				return { code: (this.players[name] != null ? 'inUse' : 'alreadyExists') };
+				return { code: (this.players[name].client != null ? 'inUse' : 'alreadyExists') };
 			if (this.players[name].client != null) {
 				this.players[name].client.send(JSON.stringify({ code: 'loggedOff' }));
 				this.players[name].client.log('force-logged client off');
@@ -517,18 +517,17 @@ export class CountryGame extends libHandler.ModuleHandler {
 		if (client.checkMethod('GET') == null)
 			return;
 
-		/* check if its one of the html endpoints and build them dynamically and discard any remaining html requests */
+		/* check if its one of the html endpoints and build them dynamically */
 		if (client.path == '/')
 			return this.buildClientPage(client);
 		if (client.path == '/admin')
 			return this.buildAdminPage(client);
 		if (client.path == '/score')
 			return this.buildScorePage(client);
-		if (client.path.toLowerCase().endsWith('.html'))
-			return;
 
-		/* respond to the request by trying to serve the file (all files are considered stable) */
-		await client.tryRespondFile(this.fileStatic(client.path), true);
+		/* respond to the request by trying to serve the file (discard all html requests; all files are considered stable) */
+		if (!client.path.toLowerCase().endsWith('.html'))
+			await client.tryRespondFile(this.fileStatic(client.path), true);
 	}
 	protected override async handleUpgrade(client: libClient.HttpUpgrade): Promise<void> {
 		client.trace(`Game handler for [${client.path}]`);
