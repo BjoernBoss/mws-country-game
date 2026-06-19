@@ -1,13 +1,7 @@
 /* SPDX-License-Identifier: BSD-3-Clause */
 /* Copyright (c) 2024-2026 Bjoern Boss Henrichsen */
-import * as libHandler from "core/handler.js";
-import * as libClient from "core/client.js";
-import * as libRequest from "core/request.js";
-import * as libLocation from "core/location.js";
-import * as libBuilder from "core/builder.js";
-import * as libCache from "core/cache.js";
+import * as mws from "@bjoernboss/mws";
 
-const MODULE_NAME = 'country-game';
 const VALID_NAME_REGEX = /^[a-zA-Z0-9-_]( ?[a-zA-Z0-9-_])*$/
 
 enum GamePhase {
@@ -25,7 +19,7 @@ enum ConnectionType {
 interface PlayerState {
 	score: number;
 	choices: number[];
-	client: libClient.ClientSocket | null;
+	client: mws.ClientSocket | null;
 };
 class GameState {
 	private phase: GamePhase;
@@ -34,9 +28,9 @@ class GameState {
 	private description: string;
 
 	private players: Record<string, PlayerState>;
-	private admin: libClient.ClientSocket | null;
-	private scores: Set<libClient.ClientSocket>;
-	private connected: Map<libClient.ClientSocket, string>;
+	private admin: mws.ClientSocket | null;
+	private scores: Set<mws.ClientSocket>;
+	private connected: Map<mws.ClientSocket, string>;
 
 	constructor() {
 		this.phase = GamePhase.start;
@@ -46,8 +40,8 @@ class GameState {
 		this.players = {};
 
 		this.admin = null;
-		this.scores = new Set<libClient.ClientSocket>();
-		this.connected = new Map<libClient.ClientSocket, string>;
+		this.scores = new Set<mws.ClientSocket>();
+		this.connected = new Map<mws.ClientSocket, string>;
 	}
 
 	private allStatesChanged(): void {
@@ -76,7 +70,7 @@ class GameState {
 			client.send(JSON.stringify({ code: 'dirty' }));
 	}
 
-	public addPlayer(client: libClient.ClientSocket, name: string, reset: boolean, takeOwnership: boolean): { code: string } {
+	public addPlayer(client: mws.ClientSocket, name: string, reset: boolean, takeOwnership: boolean): { code: string } {
 		const added: boolean = !(name in this.players);
 
 		/* check if the player is already logged in */
@@ -108,10 +102,10 @@ class GameState {
 		client.send(JSON.stringify({ code: 'dirty' }));
 		return { code: 'ok' };
 	}
-	public addScore(client: libClient.ClientSocket): void {
+	public addScore(client: mws.ClientSocket): void {
 		this.scores.add(client);
 	}
-	public addAdmin(client: libClient.ClientSocket): { code: string } {
+	public addAdmin(client: mws.ClientSocket): { code: string } {
 		/* log the current admin off */
 		if (this.admin != null) {
 			this.admin.send(JSON.stringify({ code: 'loggedOff' }));
@@ -123,7 +117,7 @@ class GameState {
 		this.admin.log(`logged admin on`);
 		return { code: 'ok' };
 	}
-	public disconnect(client: libClient.ClientSocket, type: ConnectionType): void {
+	public disconnect(client: mws.ClientSocket, type: ConnectionType): void {
 		if (type == ConnectionType.admin) {
 			if (client == this.admin) {
 				this.admin.log('logged admin off');
@@ -145,7 +139,7 @@ class GameState {
 	}
 
 	/* called by players */
-	public getPlayerState(client: libClient.ClientSocket): any {
+	public getPlayerState(client: mws.ClientSocket): any {
 		const name = this.connected.get(client);
 		if (name == null || this.players[name].client != client)
 			return { code: 'notLoggedIn' };
@@ -161,7 +155,7 @@ class GameState {
 			correct: this.correct
 		};
 	}
-	public makeChoice(client: libClient.ClientSocket, index: number, value: number): { code: string } {
+	public makeChoice(client: mws.ClientSocket, index: number, value: number): { code: string } {
 		const name = this.connected.get(client);
 		if (name == null || this.players[name].client != client)
 			return { code: 'notLoggedIn' };
@@ -193,7 +187,7 @@ class GameState {
 	}
 
 	/* called by admin */
-	public getAdminState(client: libClient.ClientSocket): any {
+	public getAdminState(client: mws.ClientSocket): any {
 		if (this.admin != client)
 			return { code: 'notLoggedIn' };
 		return {
@@ -202,7 +196,7 @@ class GameState {
 			state: this.phase
 		};
 	}
-	public resetAll(client: libClient.ClientSocket, resetPlayers: boolean) {
+	public resetAll(client: mws.ClientSocket, resetPlayers: boolean) {
 		if (this.admin != client)
 			return { code: 'notLoggedIn' };
 
@@ -228,7 +222,7 @@ class GameState {
 		this.scoreChanged();
 		return { code: 'ok' };
 	}
-	public setupNext(client: libClient.ClientSocket, desc: string, opt: string[]): { code: string } {
+	public setupNext(client: mws.ClientSocket, desc: string, opt: string[]): { code: string } {
 		if (this.admin != client)
 			return { code: 'notLoggedIn' };
 
@@ -251,7 +245,7 @@ class GameState {
 		this.allStatesChanged();
 		return { code: 'ok' };
 	}
-	public startRound(client: libClient.ClientSocket): { code: string } {
+	public startRound(client: mws.ClientSocket): { code: string } {
 		if (this.admin != client)
 			return { code: 'notLoggedIn' };
 
@@ -265,7 +259,7 @@ class GameState {
 		this.allStatesChanged();
 		return { code: 'ok' };
 	}
-	public closeRound(client: libClient.ClientSocket): { code: string } {
+	public closeRound(client: mws.ClientSocket): { code: string } {
 		if (this.admin != client)
 			return { code: 'notLoggedIn' };
 
@@ -279,7 +273,7 @@ class GameState {
 		this.allStatesChanged();
 		return { code: 'ok' };
 	}
-	public resolveRound(client: libClient.ClientSocket, result: number[]): { code: string } {
+	public resolveRound(client: mws.ClientSocket, result: number[]): { code: string } {
 		if (this.admin != client)
 			return { code: 'notLoggedIn' };
 
@@ -307,19 +301,21 @@ class GameState {
 	}
 };
 
-export class CountryGame extends libHandler.ModuleHandler {
+export class CountryGame extends mws.ModuleHandler {
 	private fileStatic: (path: string) => string;
+	private fileAssets: (path: string) => string;
 	private game: GameState;
-	private connected: Set<libClient.ClientSocket>;
+	private connected: Set<mws.ClientSocket>;
 
 	constructor() {
-		super(MODULE_NAME);
+		super('country-game');
 
-		this.fileStatic = libLocation.MakeSelfPath(import.meta.url, '/static');
+		this.fileStatic = mws.createPathSelf(import.meta.url, '../static');
+		this.fileAssets = mws.createPathSelf(import.meta.url, '../assets');
 		this.game = new GameState();
-		this.connected = new Set<libClient.ClientSocket>();
+		this.connected = new Set<mws.ClientSocket>();
 	}
-	private async acceptWebSocket(client: libClient.ClientSocket, type: ConnectionType): Promise<void> {
+	private async acceptWebSocket(client: mws.ClientSocket, type: ConnectionType): Promise<void> {
 		this.connected.add(client);
 
 		/* configure the client (scores dont need to log in) */
@@ -329,7 +325,7 @@ export class CountryGame extends libHandler.ModuleHandler {
 			this.game.addScore(client);
 
 		/* register the callbacks */
-		client.ondata = (data) => {
+		client.on('data', (data) => {
 			try {
 				let parsed = JSON.parse(data.toString('utf-8'));
 
@@ -354,14 +350,14 @@ export class CountryGame extends libHandler.ModuleHandler {
 				client.error(`exception while handling ${type}: [${err}]`);
 				client.close();
 			}
-		};
-		client.onclose = () => {
+		});
+		client.on('close', () => {
 			this.game.disconnect(client, type);
 			this.connected.delete(client);
 			client.log(`websocket closed`);
-		};
+		});
 	}
-	private handlePlayerMessage(client: libClient.ClientSocket, msg: any): { code: string } {
+	private handlePlayerMessage(client: mws.ClientSocket, msg: any): { code: string } {
 		if (typeof (msg.cmd) != 'string' || msg.cmd == '')
 			return { code: 'malformed' };
 
@@ -384,7 +380,7 @@ export class CountryGame extends libHandler.ModuleHandler {
 				return { code: 'malformed' };
 		}
 	}
-	private handleAdminMessage(client: libClient.ClientSocket, msg: any): { code: string } {
+	private handleAdminMessage(client: mws.ClientSocket, msg: any): { code: string } {
 		if (typeof (msg.cmd) != 'string' || msg.cmd == '')
 			return { code: 'malformed' };
 
@@ -428,93 +424,111 @@ export class CountryGame extends libHandler.ModuleHandler {
 				return { code: 'malformed' };
 		}
 	}
-	private async fetchBody(client: libClient.HttpRequest, path: string): Promise<string | null> {
-		const fullPath = this.fileStatic(path);
+	private async fetchBody(client: mws.ClientRequest, path: string): Promise<string | null> {
+		const fullPath = this.fileAssets(path);
 
-		const cached: libCache.Cached | null = libCache.GetActual(fullPath, true);
-		if (cached == null) {
-			client.error(`Failed to find content [${fullPath}]`);
-			client.respondFileSystemError();
-			return null;
-		}
-
+		/* look for the file */
 		try {
-			return (await cached.readAsync()).toString('utf-8');
+			const data: Buffer | null = await this.cache.read(fullPath);
+			if (data == null) {
+				client.respondInternalError(`Failed to find content [${fullPath}]`);
+				return null;
+			}
+			return data.toString('utf-8');
 		}
 		catch (err: any) {
-			client.error(`Failed to read content [${fullPath}]: ${err.message}`);
-			client.respondFileSystemError();
+			client.respondInternalError(`Failed to read content [${fullPath}]: ${err.message}`);
 			return null;
 		}
 	}
-	private async buildClientPage(client: libClient.HttpRequest): Promise<void> {
-		const toPath = (path: string) => libCache.MakeImmutable(this.moduleName, client.makePath(path), true);
-		const b = libBuilder;
-
-		const body: string | null = await this.fetchBody(client, '/client/main.html');
+	private staticPath(client: mws.ClientRequest, path: string): string {
+		return client.makePath(this.cache.immutable(this.name, mws.joinSanitized('/static', path)));
+	}
+	private async buildClientPage(client: mws.ClientRequest): Promise<void> {
+		const body: string | null = await this.fetchBody(client, '/client.html');
 		if (body == null)
 			return;
 
+		const b = mws.build;
 		const page = new b.HtmlPage({
 			language: 'de',
 			head: [
 				b.Meta('viewport', 'width=device-width, initial-scale=1'),
 				b.Title('Normaler Mitspieler!'),
-				b.LoadStyle(toPath('/client/style.css')),
-				b.LoadScript(toPath('/client/script.js')),
+				b.LoadStyle(this.staticPath(client, '/client/style.css')),
+				b.LoadScript(this.staticPath(client, '/client/script.js')),
 			],
 			body: [
-				b.AddScript(`window.__CSS_URL_DK = '${toPath('/dk-flag-feature.svg')}';`),
-				b.AddScript(`window.__CSS_URL_KH = '${toPath('/kh-flag-feature.svg')}';`),
+				b.AddScript(`window.__CSS_URL_DK = '${this.staticPath(client, '/dk-flag-feature.svg')}';`),
+				b.AddScript(`window.__CSS_URL_KH = '${this.staticPath(client, '/kh-flag-feature.svg')}';`),
 				b.Embed(body, true)
 			]
 		});
-		client.respondHtml(page, { status: libRequest.Status.Ok });
+		client.respondHtml(page, { status: mws.Status.Ok });
 	}
-	private async buildAdminPage(client: libClient.HttpRequest): Promise<void> {
-		const toPath = (path: string) => libCache.MakeImmutable(this.moduleName, client.makePath(path), true);
-		const b = libBuilder;
-
-		const body: string | null = await this.fetchBody(client, '/admin/main.html');
+	private async buildAdminPage(client: mws.ClientRequest): Promise<void> {
+		const body: string | null = await this.fetchBody(client, '/admin.html');
 		if (body == null)
 			return;
 
+		const b = mws.build;
 		const page = new b.HtmlPage({
 			language: 'de',
 			head: [
 				b.Meta('viewport', 'width=device-width, initial-scale=1'),
 				b.Title('Spiel Kontrolle!'),
-				b.LoadStyle(toPath('/admin/style.css')),
-				b.LoadScript(toPath('/admin/script.js'))
+				b.LoadStyle(this.staticPath(client, '/admin/style.css')),
+				b.LoadScript(this.staticPath(client, '/admin/script.js'))
 			],
 			body: b.Embed(body, true)
 		});
-		client.respondHtml(page, { status: libRequest.Status.Ok });
+		client.respondHtml(page, { status: mws.Status.Ok });
 	}
-	private async buildScorePage(client: libClient.HttpRequest): Promise<void> {
-		const toPath = (path: string) => libCache.MakeImmutable(this.moduleName, client.makePath(path), true);
-		const b = libBuilder;
-
-		const body: string | null = await this.fetchBody(client, '/score/main.html');
+	private async buildScorePage(client: mws.ClientRequest): Promise<void> {
+		const body: string | null = await this.fetchBody(client, '/score.html');
 		if (body == null)
 			return;
 
+		const b = mws.build;
 		const page = new b.HtmlPage({
 			language: 'de',
 			head: [
 				b.Meta('viewport', 'width=device-width, initial-scale=1'),
 				b.Title('Punktestand'),
-				b.LoadStyle(toPath('/score/style.css')),
-				b.LoadScript(toPath('/score/script.js'))
+				b.LoadStyle(this.staticPath(client, '/score/style.css')),
+				b.LoadScript(this.staticPath(client, '/score/script.js'))
 			],
 			body: b.Embed(body, true)
 		});
-		client.respondHtml(page, { status: libRequest.Status.Ok });
+		client.respondHtml(page, { status: mws.Status.Ok });
 	}
 
-	protected override async handleRequest(client: libClient.HttpRequest): Promise<void> {
+	protected override async handleRequest(client: mws.ClientRequest): Promise<void> {
 		client.trace(`Game handler for [${client.path}]`);
-		if (client.checkMethod('GET') == null)
+
+		/* check if its a web-socket request (await acceptance to ensure the stop
+		*	method is not entered before the full accept has been performed) */
+		if (client.path == '/ws-client') {
+			const ws = await client.acceptWebSocket();
+			if (ws != null)
+				await this.acceptWebSocket(ws, ConnectionType.player);
+			return;
+		}
+		if (client.path == '/ws-admin') {
+			const ws = await client.acceptWebSocket();
+			if (ws != null)
+				await this.acceptWebSocket(ws, ConnectionType.admin);
+			return;
+		}
+		if (client.path == '/ws-score') {
+			const ws = await client.acceptWebSocket();
+			if (ws != null)
+				await this.acceptWebSocket(ws, ConnectionType.score);
+			return;
+		}
+
+		/* all other endpoints only support 'getting' */
+		if (client.requireMethod('GET') == null)
 			return;
 
 		/* check if its one of the html endpoints and build them dynamically */
@@ -525,30 +539,9 @@ export class CountryGame extends libHandler.ModuleHandler {
 		if (client.path == '/score')
 			return this.buildScorePage(client);
 
-		/* respond to the request by trying to serve the file (discard all html requests; all files are considered stable) */
-		if (!client.path.toLowerCase().endsWith('.html'))
-			await client.tryRespondFile(this.fileStatic(client.path), true);
-	}
-	protected override async handleUpgrade(client: libClient.HttpUpgrade): Promise<void> {
-		client.trace(`Game handler for [${client.path}]`);
-
-		/* check if its a web-socket request (await acceptance to ensure the stop
-		*	method is not entered before the full accept has been performed) */
-		if (client.path == '/ws-client') {
-			const ws = await client.acceptWebSocket();
-			if (ws != null)
-				await this.acceptWebSocket(ws, ConnectionType.player);
-		}
-		else if (client.path == '/ws-admin') {
-			const ws = await client.acceptWebSocket();
-			if (ws != null)
-				await this.acceptWebSocket(ws, ConnectionType.admin);
-		}
-		else if (client.path == '/ws-score') {
-			const ws = await client.acceptWebSocket();
-			if (ws != null)
-				await this.acceptWebSocket(ws, ConnectionType.score);
-		}
+		/* check if its just static content to be served */
+		if (client.isInsideOf('/static'))
+			await client.tryRespondFile(this.fileStatic(mws.childPath('/static', client.path)));
 	}
 	protected override async handleStop(): Promise<void> {
 		const promises: Promise<void>[] = [];
