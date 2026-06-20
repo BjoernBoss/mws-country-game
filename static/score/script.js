@@ -105,7 +105,7 @@ _game.applyState = function () {
 	let list = [];
 	for (let key in _game.state)
 		list.push([key, _game.state[key]]);
-	list.sort((v) => v[1]);
+	list.sort((a, b) => b[1] - a[1]);
 
 	/* remove all content */
 	while (_game.htmlScores.children.length > 0)
