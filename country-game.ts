@@ -347,7 +347,7 @@ export class CountryGame extends mws.ModuleHandler {
 					client.trace(`response: ${response.code}`);
 				client.send(JSON.stringify(response));
 			} catch (err: any) {
-				client.error(`exception while handling ${type}: [${err}]`);
+				client.error(`exception while handling ${type}: [${err.message}]`);
 				client.close();
 			}
 		});
