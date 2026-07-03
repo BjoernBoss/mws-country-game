@@ -445,6 +445,10 @@ export class CountryGame extends mws.ModuleHandler {
 		return client.makePath(this.cache.immutable(this.name, mws.joinSanitized('/static', path)));
 	}
 	private async buildClientPage(client: mws.ClientRequest): Promise<void> {
+		if (client.requireMethod('GET') == null)
+			return;
+
+		/* read the body */
 		const body: string | null = await this.fetchBody(client, '/client.html');
 		if (body == null)
 			return;
@@ -467,6 +471,10 @@ export class CountryGame extends mws.ModuleHandler {
 		client.respondHtml(page, { status: mws.Status.Ok });
 	}
 	private async buildAdminPage(client: mws.ClientRequest): Promise<void> {
+		if (client.requireMethod('GET') == null)
+			return;
+
+		/* read the body */
 		const body: string | null = await this.fetchBody(client, '/admin.html');
 		if (body == null)
 			return;
@@ -485,6 +493,10 @@ export class CountryGame extends mws.ModuleHandler {
 		client.respondHtml(page, { status: mws.Status.Ok });
 	}
 	private async buildScorePage(client: mws.ClientRequest): Promise<void> {
+		if (client.requireMethod('GET') == null)
+			return;
+
+		/* read the body */
 		const body: string | null = await this.fetchBody(client, '/score.html');
 		if (body == null)
 			return;
@@ -527,10 +539,6 @@ export class CountryGame extends mws.ModuleHandler {
 			return;
 		}
 
-		/* all other endpoints only support 'getting' */
-		if (client.requireMethod('GET') == null)
-			return;
-
 		/* check if its one of the html endpoints and build them dynamically */
 		if (client.path == '/')
 			return this.buildClientPage(client);
@@ -540,8 +548,8 @@ export class CountryGame extends mws.ModuleHandler {
 			return this.buildScorePage(client);
 
 		/* check if its just static content to be served */
-		if (client.isInsideOf('/static'))
-			await client.tryRespondFile(this.fileStatic(mws.childPath('/static', client.path)));
+		if (client.isInsideOf('/static') && client.requireMethod('GET') != null)
+			await client.tryRespondFile(this.fileStatic(client.getChildPath('/static')));
 	}
 	protected override async handleStop(): Promise<void> {
 		const promises: Promise<void>[] = [];
