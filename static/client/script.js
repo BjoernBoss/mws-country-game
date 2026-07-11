@@ -58,7 +58,10 @@ window.onload = function () {
 	};
 	_game.setupConnection();
 };
-window.onbeforeunload = function () { return "Your work will be lost."; };
+window.onbeforeunload = function (e) {
+	e.preventDefault();
+	return "keep";
+};
 
 _game.connectionFailed = function () {
 	if (_game.sock.connectionFailedDelay > 512) {
