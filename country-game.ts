@@ -2,8 +2,6 @@
 /* Copyright (c) 2024-2026 Bjoern Boss Henrichsen */
 import * as mws from "@bjoernboss/mws";
 
-const VALID_NAME_REGEX = /^[a-zA-Z0-9-_]( ?[a-zA-Z0-9-_])*$/
-
 enum GamePhase {
 	start = 'start',
 	prepared = 'prepared',
@@ -365,10 +363,12 @@ export class CountryGame extends mws.ModuleHandler {
 		let loggedIn = false
 		switch (msg.cmd) {
 			case 'login':
-				if (typeof (msg.name) != 'string' || msg.name == '' || !msg.name.match(VALID_NAME_REGEX))
+				if (typeof (msg.name) != 'string' || msg.name == '' || msg.name.trim() != msg.name)
 					return { code: 'malformed' };
-				if (!loggedIn)
-					client.tagLog(msg.name), loggedIn = true;
+				if (!loggedIn) {
+					const name = JSON.stringify(msg.name);
+					client.tagLog(name.substring(1, name.length - 1)), loggedIn = true;
+				}
 				return this.game.addPlayer(client, msg.name, msg.resetState === true, msg.takeOwnership === true);
 			case 'state':
 				return this.game.getPlayerState(client);
@@ -459,12 +459,13 @@ export class CountryGame extends mws.ModuleHandler {
 			head: [
 				b.Meta('viewport', 'width=device-width, initial-scale=1'),
 				b.Title('Normaler Mitspieler!'),
+				b.AddScript(`window.__CSS_URL_DK = '${this.staticPath(client, '/dk-flag-feature.svg')}';`),
+				b.AddScript(`window.__CSS_URL_KH = '${this.staticPath(client, '/kh-flag-feature.svg')}';`),
+				b.AddScript(`window.__SOCKET = '${client.makePath('/ws-client')}';`),
 				b.LoadStyle(this.staticPath(client, '/client/style.css')),
 				b.LoadScript(this.staticPath(client, '/client/script.js')),
 			],
 			body: [
-				b.AddScript(`window.__CSS_URL_DK = '${this.staticPath(client, '/dk-flag-feature.svg')}';`),
-				b.AddScript(`window.__CSS_URL_KH = '${this.staticPath(client, '/kh-flag-feature.svg')}';`),
 				b.Embed(body, true)
 			]
 		});
@@ -485,6 +486,7 @@ export class CountryGame extends mws.ModuleHandler {
 			head: [
 				b.Meta('viewport', 'width=device-width, initial-scale=1'),
 				b.Title('Spiel Kontrolle!'),
+				b.AddScript(`window.__SOCKET = '${client.makePath('/ws-admin')}';`),
 				b.LoadStyle(this.staticPath(client, '/admin/style.css')),
 				b.LoadScript(this.staticPath(client, '/admin/script.js'))
 			],
@@ -506,6 +508,7 @@ export class CountryGame extends mws.ModuleHandler {
 			language: 'de',
 			head: [
 				b.Meta('viewport', 'width=device-width, initial-scale=1'),
+				b.AddScript(`window.__SOCKET = '${client.makePath('/ws-score')}';`),
 				b.Title('Punktestand'),
 				b.LoadStyle(this.staticPath(client, '/score/style.css')),
 				b.LoadScript(this.staticPath(client, '/score/script.js'))

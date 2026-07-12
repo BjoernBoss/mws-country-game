@@ -3,6 +3,8 @@
 let _game = {};
 
 window.onload = function () {
+	const pathSocket = (window?.__SOCKET ?? '/bad_path');
+
 	/* fetch all relevant components */
 	_game.htmlScores = document.getElementById('scores');
 	_game.state = {};
@@ -10,7 +12,7 @@ window.onload = function () {
 	/* setup the web-socket */
 	_game.sock = {
 		ws: null,
-		url: new URL('./ws-score', `${location.protocol == 'https:' ? 'wss' : 'ws'}://${location.host}${location.pathname}`).href,
+		url: `${location.protocol == 'https:' ? 'wss' : 'ws'}://${location.host}${pathSocket}`,
 		handling: false,
 		state: 'creating',
 		connectionFailedDelay: 256

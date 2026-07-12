@@ -2,9 +2,9 @@
 /* Copyright (c) 2024-2026 Bjoern Boss Henrichsen */
 let _game = {};
 
-const GAME_NAME_REGEX = /^[a-zA-Z0-9-_]( ?[a-zA-Z0-9-_])*$/
-
 window.onload = function () {
+	const pathSocket = (window?.__SOCKET ?? '/bad_path');
+
 	/* patch the css accordingly to contain the dynamic image paths */
 	document.getElementById('root').style.setProperty('--dk-image-path', `url('${window.__CSS_URL_DK}')`);
 	document.getElementById('root').style.setProperty('--kh-image-path', `url('${window.__CSS_URL_KH}')`);
@@ -50,7 +50,7 @@ window.onload = function () {
 		pathName += '/';
 	_game.sock = {
 		ws: null,
-		url: new URL('./ws-client', `${location.protocol == 'https:' ? 'wss' : 'ws'}://${location.host}${pathName}`).href,
+		url: `${location.protocol == 'https:' ? 'wss' : 'ws'}://${location.host}${pathSocket}`,
 		queue: [],
 		handling: false,
 		state: 'creating',
@@ -227,7 +227,7 @@ _game.login = function (takeOwnership, reset) {
 	/* validate the name */
 	else {
 		name = _game.htmlName.value.trim();
-		if (!name.match(GAME_NAME_REGEX)) {
+		if (name == '') {
 			_game.htmlWarning.classList.remove('hidden');
 			_game.htmlWarningText.innerText = 'Bitte gib einen zulässigen Namen ein';
 			return;
