@@ -442,7 +442,7 @@ export class CountryGame extends mws.ModuleHandler {
 		}
 	}
 	private staticPath(client: mws.ClientRequest, path: string): string {
-		return client.makePath(this.cache.immutable(this.name, mws.joinSanitized('/static', path)));
+		return client.makeImmutable(this.name, mws.joinSanitized('/static', path));
 	}
 	private async buildClientPage(client: mws.ClientRequest): Promise<void> {
 		if (client.requireMethod('GET') == null)
